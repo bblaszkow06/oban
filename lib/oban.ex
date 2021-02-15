@@ -658,7 +658,7 @@ defmodule Oban do
   def retry_job(name \\ __MODULE__, job_id) when is_integer(job_id) do
     name
     |> config()
-    |> Query.retry_job(job_id)
+    |> Query.retry_job(%Job{id: job_id})
   end
 
   @doc """
@@ -680,9 +680,9 @@ defmodule Oban do
   def cancel_job(name \\ __MODULE__, job_id) when is_integer(job_id) do
     conf = config(name)
 
-    with :ignored <- Query.cancel_job(conf, job_id) do
-      Notifier.notify(conf, :signal, %{action: :pkill, job_id: job_id})
-    end
+    Notifier.notify(conf, :signal, %{action: :pkill, job_id: job_id})
+
+    Query.cancel_job(conf, %Job{id: job_id})
   end
 
   defp scope_signal(conf, opts) do

@@ -40,7 +40,9 @@ defmodule Oban.Queue.Drainer do
   end
 
   defp fetch_available(conf, queue) do
-    {:ok, jobs} = Query.fetch_available_jobs(conf, queue, @fake_nonce, @unlimited)
+    queue_meta = %{queue: queue, nonce: @fake_nonce, limit: @unlimited}
+
+    {:ok, jobs} = Query.fetch_jobs(conf, queue_meta)
 
     jobs
   end

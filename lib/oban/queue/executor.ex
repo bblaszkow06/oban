@@ -136,7 +136,7 @@ defmodule Oban.Queue.Executor do
       :failure ->
         job = job_with_unsaved_error(exec)
 
-        Query.retry_job(exec.conf, job, backoff(exec.worker, job))
+        Query.error_job(exec.conf, job, backoff(exec.worker, job))
 
         execute_exception(exec)
 
