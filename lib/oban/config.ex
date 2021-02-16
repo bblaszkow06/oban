@@ -8,7 +8,6 @@ defmodule Oban.Config do
 
   @type t :: %__MODULE__{
           circuit_backoff: timeout(),
-          dispatch_cooldown: pos_integer(),
           name: Oban.name(),
           node: binary(),
           plugins: [module() | {module() | Keyword.t()}],
@@ -24,7 +23,6 @@ defmodule Oban.Config do
 
   @enforce_keys [:node, :repo]
   defstruct circuit_backoff: :timer.seconds(30),
-            dispatch_cooldown: 5,
             name: Oban,
             node: nil,
             plugins: [],
@@ -128,13 +126,6 @@ defmodule Oban.Config do
     unless is_pos_integer(backoff) do
       raise ArgumentError,
             "expected :circuit_backoff to be a positive integer, got: #{inspect(backoff)}"
-    end
-  end
-
-  defp validate_opt!({:dispatch_cooldown, cooldown}) do
-    unless is_pos_integer(cooldown) do
-      raise ArgumentError,
-            "expected :dispatch_cooldown to be a positive integer, got: #{inspect(cooldown)}"
     end
   end
 

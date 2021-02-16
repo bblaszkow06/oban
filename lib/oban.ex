@@ -36,7 +36,6 @@ defmodule Oban do
 
   @type option ::
           {:circuit_backoff, timeout()}
-          | {:dispatch_cooldown, pos_integer()}
           | {:get_dynamic_repo, nil | (() -> pid() | atom())}
           | {:log, false | Logger.level()}
           | {:name, name()}
@@ -88,9 +87,6 @@ defmodule Oban do
     exports: 5]` would start the queues `default` and `exports` with a combined concurrency level
     of 15. The concurrency setting specifies how many jobs _each queue_ will run concurrently.
 
-    Queues accept additional override options to customize their behavior, e.g. by setting the
-    `poll_interval` and the `dispatch_cooldown` for a specific queue.
-
     For testing purposes `:queues` may be set to `false` or `nil`, which effectively disables all
     job dispatching.
 
@@ -106,16 +102,6 @@ defmodule Oban do
   * `:circuit_backoff` — the number of milliseconds until queries are attempted after a database
     error. All processes communicating with the database are equipped with circuit breakers and
     will use this for the backoff. Defaults to `30_000ms`.
-
-  * `:dispatch_cooldown` — the minimum number of milliseconds a producer will wait before fetching
-    and running more jobs. A slight cooldown period prevents a producer from flooding with
-    messages and thrashing the database. The cooldown period _directly impacts_ a producer's
-    throughput: jobs per second for a single queue is calculated by `(1000 / cooldown) * limit`.
-    For example, with a `5ms` cooldown and a queue limit of `25` a single queue can run 2,500
-    jobs/sec.
-
-    The default is `5ms` and the minimum is `1ms`, which is likely faster than the database can
-    return new jobs to run.
 
   * `:shutdown_grace_period` - the amount of time a queue will wait for executing jobs to complete
     before hard shutdown, specified in milliseconds. The default is `15_000`, or 15 seconds.

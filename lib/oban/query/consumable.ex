@@ -21,7 +21,8 @@ defmodule Oban.Query.Consumable do
   @doc """
   Update queue metadata such as the concurrency limit or pause status.
   """
-  @callback update_queue(conf(), queue_meta(), queue_opts()) :: {:ok, queue_meta} | {:error, term()}
+  @callback update_queue(conf(), queue_meta(), queue_opts()) ::
+              {:ok, queue_meta} | {:error, term()}
 
   @doc """
   Fetch available jobs for the given queue, up to configured limits.

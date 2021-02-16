@@ -46,7 +46,6 @@ defmodule Oban.Queue.Supervisor do
       opts
       |> Keyword.drop([:name])
       |> Keyword.merge(foreman: fore_name, name: prod_name)
-      |> Keyword.put_new(:dispatch_cooldown, conf.dispatch_cooldown)
 
     watch_opts = [
       foreman: fore_name,

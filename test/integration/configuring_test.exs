@@ -6,7 +6,6 @@ defmodule Oban.Integration.ConfiguringTest do
   test "configuring queue limits and poll intervals" do
     name =
       start_supervised_oban!(
-        dispatch_cooldown: 1,
         queues: [
           alpha: 1,
           gamma: [limit: 1, dispatch_cooldown: 5],

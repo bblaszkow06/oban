@@ -19,7 +19,7 @@ defmodule Oban.Queue.Producer do
     @enforce_keys [:conf, :foreman, :limit, :nonce, :queue]
     defstruct [
       :conf,
-      :cooldown_ref,
+      :debounce_timer,
       :dispatched_at,
       :foreman,
       :limit,
@@ -27,7 +27,7 @@ defmodule Oban.Queue.Producer do
       :nonce,
       :queue,
       :started_at,
-      dispatch_cooldown: 5,
+      dispatch_cooldown: 1,
       paused: false,
       running: %{}
     ]
@@ -71,13 +71,13 @@ defmodule Oban.Queue.Producer do
   def handle_info({ref, _val}, %State{running: running} = state) do
     Process.demonitor(ref, [:flush])
 
-    dispatch(%{state | running: Map.delete(running, ref)})
+    debounce_dispatch(%{state | running: Map.delete(running, ref)})
   end
 
   def handle_info({:DOWN, ref, :process, _pid, :shutdown}, %State{running: running} = state) do
     Process.demonitor(ref, [:flush])
 
-    dispatch(%{state | running: Map.delete(running, ref)})
+    debounce_dispatch(%{state | running: Map.delete(running, ref)})
   end
 
   # This message is only received when the job's task doesn't exit cleanly. This should be rare,
@@ -97,18 +97,15 @@ defmodule Oban.Queue.Producer do
       end)
     end)
 
-    dispatch(%{state | running: running})
+    debounce_dispatch(%{state | running: running})
   end
 
   def handle_info(:dispatch, %State{} = state) do
-    dispatch(state)
+    {:noreply, %{dispatch(state) | debounce_timer: nil}}
   end
 
-  def handle_info({:notification, :insert, payload}, %State{queue: queue} = state) do
-    case payload do
-      %{"queue" => ^queue} -> dispatch(state)
-      _ -> {:noreply, state}
-    end
+  def handle_info({:notification, :insert, %{"queue" => queue}}, %State{queue: queue} = state) do
+    debounce_dispatch(state)
   end
 
   def handle_info({:notification, :signal, payload}, %State{queue: queue} = state) do
@@ -134,7 +131,7 @@ defmodule Oban.Queue.Producer do
           state
       end
 
-    dispatch(state)
+    debounce_dispatch(state)
   end
 
   def handle_info(_message, state) do
@@ -173,6 +170,66 @@ defmodule Oban.Queue.Producer do
     state
   end
 
+  # Dispatching
+
+  defp debounce_dispatch(%State{} = state) do
+    if is_reference(state.debounce_timer) do
+      {:noreply, state}
+    else
+      debounce_timer = Process.send_after(self(), :dispatch, state.dispatch_cooldown)
+
+      {:noreply, %{state | debounce_timer: debounce_timer}}
+    end
+  end
+
+  defp dispatch(%State{paused: true} = state) do
+    state
+  end
+
+  defp dispatch(%State{limit: limit, running: running} = state) when map_size(running) >= limit do
+    state
+  end
+
+  defp dispatch(%State{} = state) do
+    meta = Map.take(state, [:conf, :queue])
+
+    running =
+      :telemetry.span([:oban, :producer], meta, fn ->
+        dispatched =
+          state
+          |> fetch_jobs()
+          |> start_jobs(state)
+
+        stop_meta = Map.put(meta, :dispatched_count, map_size(dispatched))
+
+        {Map.merge(dispatched, state.running), stop_meta}
+      end)
+
+    %{state | running: running}
+  end
+
+  defp fetch_jobs(%State{} = state) do
+    queue_meta = %{
+      queue: state.queue,
+      nonce: state.nonce,
+      limit: state.limit - map_size(state.running)
+    }
+
+    {:ok, jobs} = Query.fetch_jobs(state.conf, queue_meta)
+
+    jobs
+  end
+
+  defp start_jobs(jobs, %State{conf: conf, foreman: foreman}) do
+    for job <- jobs, into: %{} do
+      exec = Executor.new(conf, job)
+
+      %{pid: pid, ref: ref} = Task.Supervisor.async_nolink(foreman, Executor, :call, [exec])
+
+      {ref, {exec, pid}}
+    end
+  end
+
   # Killing
 
   defp pkill(ref, pid, state) do
@@ -188,78 +245,4 @@ defmodule Oban.Queue.Producer do
         %{state | running: Map.delete(running, ref)}
     end
   end
-
-  # Dispatching
-
-  defp dispatch(%State{paused: true} = state) do
-    {:noreply, state}
-  end
-
-  defp dispatch(%State{limit: limit, running: running} = state) when map_size(running) >= limit do
-    {:noreply, state}
-  end
-
-  defp dispatch(%State{} = state) do
-    cond do
-      dispatch_now?(state) ->
-        %State{conf: conf, limit: limit, nonce: nonce, queue: queue, running: running} = state
-
-        meta = %{queue: queue, conf: conf}
-
-        running =
-          :telemetry.span([:oban, :producer], meta, fn ->
-            dispatched =
-              conf
-              |> fetch_jobs(queue, nonce, limit - map_size(running))
-              |> start_jobs(state)
-
-            {Map.merge(dispatched, running),
-             Map.put(meta, :dispatched_count, map_size(dispatched))}
-          end)
-
-        {:noreply, %{state | cooldown_ref: nil, dispatched_at: system_now(), running: running}}
-
-      cooldown_available?(state) ->
-        interval = system_now() - state.dispatched_at + state.dispatch_cooldown
-
-        {:noreply, dispatch_after(state, interval)}
-
-      true ->
-        {:noreply, state}
-    end
-  end
-
-  defp dispatch_now?(%State{dispatched_at: nil}), do: true
-
-  defp dispatch_now?(%State{} = state) do
-    system_now() > state.dispatched_at + state.dispatch_cooldown
-  end
-
-  defp cooldown_available?(%State{cooldown_ref: ref}), do: is_nil(ref)
-
-  defp dispatch_after(%State{} = state, interval) do
-    cooldown_ref = Process.send_after(self(), :dispatch, interval)
-
-    %{state | cooldown_ref: cooldown_ref}
-  end
-
-  defp fetch_jobs(conf, queue, nonce, count) do
-    queue_meta = %{queue: queue, nonce: nonce, limit: count}
-
-    {:ok, jobs} = Query.fetch_jobs(conf, queue_meta)
-
-    jobs
-  end
-
-  defp start_jobs(jobs, %State{conf: conf, foreman: foreman}) do
-    for job <- jobs, into: %{} do
-      exec = Executor.new(conf, job)
-
-      %{pid: pid, ref: ref} = Task.Supervisor.async_nolink(foreman, Executor, :call, [exec])
-
-      {ref, {exec, pid}}
-    end
-  end
-
-  defp system_now, do: System.monotonic_time(:millisecond)
 end
