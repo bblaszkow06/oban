@@ -3,8 +3,6 @@ defmodule Oban.Queue.Producer do
 
   use GenServer
 
-  import Oban.Breaker, only: [open_circuit: 1, trip_errors: 0, trip_circuit: 3]
-
   alias Oban.{Breaker, Config, Notifier, Query}
   alias Oban.Queue.Executor
 
@@ -28,9 +26,7 @@ defmodule Oban.Queue.Producer do
       :name,
       :nonce,
       :queue,
-      :reset_timer,
       :started_at,
-      circuit: :enabled,
       dispatch_cooldown: 5,
       paused: false,
       running: %{}
@@ -141,10 +137,6 @@ defmodule Oban.Queue.Producer do
     dispatch(state)
   end
 
-  def handle_info(:reset_circuit, state) do
-    {:noreply, open_circuit(state)}
-  end
-
   def handle_info(_message, state) do
     {:noreply, state}
   end
@@ -203,10 +195,6 @@ defmodule Oban.Queue.Producer do
     {:noreply, state}
   end
 
-  defp dispatch(%State{circuit: :disabled} = state) do
-    {:noreply, state}
-  end
-
   defp dispatch(%State{limit: limit, running: running} = state) when map_size(running) >= limit do
     {:noreply, state}
   end
@@ -239,8 +227,6 @@ defmodule Oban.Queue.Producer do
       true ->
         {:noreply, state}
     end
-  rescue
-    exception in trip_errors() -> {:noreply, trip_circuit(exception, __STACKTRACE__, state)}
   end
 
   defp dispatch_now?(%State{dispatched_at: nil}), do: true
