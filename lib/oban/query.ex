@@ -2,6 +2,7 @@ defmodule Oban.Query do
   @moduledoc false
 
   @behaviour Oban.Query.Consumable
+  @behaviour Oban.Query.Insertable
 
   import Ecto.Query
   import DateTime, only: [utc_now: 0]
@@ -153,32 +154,29 @@ defmodule Oban.Query do
     :ok
   end
 
-  @spec fetch_or_insert_job(Config.t(), Job.changeset()) :: {:ok, Job.t()} | {:error, term()}
-  def fetch_or_insert_job(conf, changeset) do
+  # Insertable Callbacks
+
+  @impl true
+  def insert_job(%Config{} = conf, changeset) do
     fun = fn -> insert_unique(conf, changeset) end
+
     with {:ok, result} <- Repo.transaction(conf, fun), do: result
   end
 
-  @spec fetch_or_insert_job(
-          Config.t(),
-          Multi.t(),
-          Multi.name(),
-          Job.changeset() | Job.changeset_fun()
-        ) ::
-          Multi.t()
-  def fetch_or_insert_job(conf, multi, name, fun) when is_function(fun, 1) do
+  @impl true
+  def insert_job(%Config{} = conf, multi, name, fun) when is_function(fun, 1) do
     Multi.run(multi, name, fn repo, changes ->
       insert_unique(%{conf | repo: repo}, fun.(changes))
     end)
   end
 
-  def fetch_or_insert_job(conf, multi, name, changeset) do
+  def insert_job(%Config{} = conf, multi, name, changeset) do
     Multi.run(multi, name, fn repo, _changes ->
       insert_unique(%{conf | repo: repo}, changeset)
     end)
   end
 
-  @spec insert_all_jobs(Config.t(), Job.changeset_list()) :: [Job.t()]
+  @impl true
   def insert_all_jobs(%Config{} = conf, changesets) when is_list(changesets) do
     entries = Enum.map(changesets, &Job.to_map/1)
 
@@ -188,12 +186,7 @@ defmodule Oban.Query do
     end
   end
 
-  @spec insert_all_jobs(
-          Config.t(),
-          Multi.t(),
-          Multi.name(),
-          Job.changeset_list() | Job.changeset_list_fun()
-        ) :: Multi.t()
+  @impl true
   def insert_all_jobs(conf, multi, name, changesets) when is_list(changesets) do
     Multi.run(multi, name, fn repo, _changes ->
       {:ok, insert_all_jobs(%{conf | repo: repo}, changesets)}

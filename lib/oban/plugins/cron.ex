@@ -210,7 +210,7 @@ defmodule Oban.Plugins.Cron do
 
       opts = unique_opts(worker.__opts__(), opts)
 
-      {:ok, job} = Query.fetch_or_insert_job(conf, worker.new(args, opts))
+      {:ok, job} = Query.insert_job(conf, worker.new(args, opts))
 
       job
     end

@@ -1,6 +1,8 @@
 defmodule Oban.Query.Consumable do
   @moduledoc false
 
+  alias Oban.{Config, Job}
+
   @type conf :: Config.t()
   @type queue_name :: Oban.queue_name()
   @type queue_opts :: Keyword.t()

@@ -238,7 +238,7 @@ defmodule Oban do
   def insert(name \\ __MODULE__, %Changeset{} = changeset) do
     name
     |> config()
-    |> Query.fetch_or_insert_job(changeset)
+    |> Query.insert_job(changeset)
   end
 
   @doc """
@@ -268,13 +268,13 @@ defmodule Oban do
   def insert(name, %Multi{} = multi, multi_name, %Changeset{} = changeset) do
     name
     |> config()
-    |> Query.fetch_or_insert_job(multi, multi_name, changeset)
+    |> Query.insert_job(multi, multi_name, changeset)
   end
 
   def insert(name, %Multi{} = multi, multi_name, fun) when is_function(fun, 1) do
     name
     |> config()
-    |> Query.fetch_or_insert_job(multi, multi_name, fun)
+    |> Query.insert_job(multi, multi_name, fun)
   end
 
   @doc """
